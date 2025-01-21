@@ -250,6 +250,8 @@ contract AgentFactoryV3 is
         application.status = ApplicationStatus.Executed;
 
         // C1
+        // 建立new Agent Token contract on DEX
+        // initialize Agent Token
         address token = _createNewAgentToken(
             application.name,
             application.symbol,
@@ -257,11 +259,14 @@ contract AgentFactoryV3 is
         );
 
         // C2
+        // 建立LP Pool
         address lp = IAgentToken(token).liquidityPools()[0];
+        // 轉移virtuals to new Agent Token contract
         IERC20(assetToken).safeTransfer(token, initialAmount);
+        // add Initial liquidity
         IAgentToken(token).addInitialLiquidity(address(this));
 
-        // C3
+        // C3 -> we may no need this
         address veToken = _createNewAgentVeToken(
             string.concat("Staked ", application.name),
             string.concat("s", application.symbol),
@@ -270,7 +275,7 @@ contract AgentFactoryV3 is
             canStake
         );
 
-        // C4
+        // C4 -> we may no need this
         string memory daoName = string.concat(application.name, " DAO");
         address payable dao = payable(
             _createNewDAO(
@@ -281,7 +286,7 @@ contract AgentFactoryV3 is
             )
         );
 
-        // C5
+        // C5 -> we may no need this
         uint256 virtualId = IAgentNft(nft).nextVirtualId();
         IAgentNft(nft).mint(
             virtualId,
@@ -295,7 +300,7 @@ contract AgentFactoryV3 is
         );
         application.virtualId = virtualId;
 
-        // C6
+        // C6 -> we may no need this
         uint256 chainId;
         assembly {
             chainId := chainid()
@@ -309,7 +314,7 @@ contract AgentFactoryV3 is
         );
         IAgentNft(nft).setTBA(virtualId, tbaAddress);
 
-        // C7
+        // C7 -> we may no need this
         IERC20(lp).approve(veToken, type(uint256).max);
         IAgentVeToken(veToken).stake(
             IERC20(lp).balanceOf(address(this)),
@@ -341,6 +346,7 @@ contract AgentFactoryV3 is
         _executeApplication(id, canStake, _tokenSupplyParams);
     }
 
+    // 建立DAO can remove this
     function _createNewDAO(
         string memory name,
         IVotes token,
@@ -360,12 +366,15 @@ contract AgentFactoryV3 is
         return instance;
     }
 
+    // initialize Agent Token
     function _createNewAgentToken(
         string memory name,
         string memory symbol,
         bytes memory tokenSupplyParams_
     ) internal returns (address instance) {
         instance = Clones.clone(tokenImplementation);
+        // initialize Agent Token
+        // 一些基礎參數
         IAgentToken(instance).initialize(
             [_tokenAdmin, _uniswapRouter, assetToken],
             abi.encode(name, symbol),
@@ -538,7 +547,7 @@ contract AgentFactoryV3 is
 
         uint256 id = _nextId++;
         uint256 proposalEndBlock = block.number; // No longer required in v2
-        Application memory application = Application(
+        Application memory application = (
             name,
             symbol,
             "",
@@ -559,6 +568,7 @@ contract AgentFactoryV3 is
         return id;
     }
 
+    // 建立DEX MEME COIN
     function executeBondingCurveApplication(
         uint256 id,
         uint256 totalSupply,

@@ -24,15 +24,15 @@ contract Bonding is
 
     address private _feeTo;
 
-    FFactory public factory;
-    FRouter public router;
-    uint256 public initialSupply;
-    uint256 public fee;
+    FFactory public factory; //0x158d7CcaA23DC3c8861c3323eD546E3d25e74309
+    FRouter public router; //0x8292B43aB73EfAC11FAF357419C38ACF448202C5
+    uint256 public initialSupply; //1000000000
+    uint256 public fee; // 100 ether (virtual)
     uint256 public constant K = 3_000_000_000_000;
-    uint256 public assetRate;
-    uint256 public gradThreshold;
-    uint256 public maxTx;
-    address public agentFactory;
+    uint256 public assetRate; // 5000
+    uint256 public gradThreshold; // 125000000 ether
+    uint256 public maxTx; // 100
+    address public agentFactory; // 0x71B8EFC8BCaD65a5D9386D07f2Dff57ab4EAf533
     struct Profile {
         address user;
         address[] tokens;
@@ -122,6 +122,7 @@ contract Bonding is
         gradThreshold = gradThreshold_;
     }
 
+    // for indexing the user to tokens
     function _createUserProfile(address _user) internal returns (bool) {
         address[] memory _tokens;
 
@@ -134,6 +135,7 @@ contract Bonding is
         return true;
     }
 
+    // for indexing the user to tokens
     function _checkIfProfileExists(address _user) internal view returns (bool) {
         return profile[_user].user == _user;
     }
@@ -152,19 +154,23 @@ contract Bonding is
         initialSupply = newSupply;
     }
 
+    // 銷售門檻 達標要轉移至DEX
     function setGradThreshold(uint256 newThreshold) public onlyOwner {
         gradThreshold = newThreshold;
     }
 
+    // 發行費用 以及to address
     function setFee(uint256 newFee, address newFeeTo) public onlyOwner {
         fee = newFee;
         _feeTo = newFeeTo;
     }
 
+    // 設定每筆轉帳最大值
     function setMaxTx(uint256 maxTx_) public onlyOwner {
         maxTx = maxTx_;
     }
 
+    // selling curve rate
     function setAssetRate(uint256 newRate) public onlyOwner {
         require(newRate > 0, "Rate err");
 
@@ -188,21 +194,26 @@ contract Bonding is
     function launch(
         string memory _name,
         string memory _ticker,
-        uint8[] memory cores,
-        string memory desc,
+        uint8[] memory cores, // ???
+        string memory desc, // description
         string memory img,
         string[4] memory urls,
         uint256 purchaseAmount
     ) public nonReentrant returns (address, address, uint) {
         require(
+            // fee = 100 virtuals
             purchaseAmount > fee,
             "Purchase amount must be greater than fee"
         );
+        // VIRTUAL
         address assetToken = router.assetToken();
         require(
+            // 檢查是否有足夠的VIRTUAL資產
             IERC20(assetToken).balanceOf(msg.sender) >= purchaseAmount,
             "Insufficient amount"
         );
+
+        // 扣掉手續費的購買金額
         uint256 initialPurchase = (purchaseAmount - fee);
         IERC20(assetToken).safeTransferFrom(msg.sender, _feeTo, fee);
         IERC20(assetToken).safeTransferFrom(
@@ -211,17 +222,27 @@ contract Bonding is
             initialPurchase
         );
 
-        FERC20 token = new FERC20(string.concat("fun ", _name), _ticker, initialSupply, maxTx);
+        // 建立內盤token
+        FERC20 token = new FERC20(
+            string.concat("fun ", _name),
+            _ticker,
+            initialSupply,
+            maxTx // 轉帳最大值
+        );
         uint256 supply = token.totalSupply();
 
+        // 透過factory 建立FPair
         address _pair = factory.createPair(address(token), assetToken);
 
+        // 給router approve
         bool approved = _approval(address(router), address(token), supply);
         require(approved);
 
+        // 計算後 liquidity = 6000 ether (virtual)
         uint256 k = ((K * 10000) / assetRate);
         uint256 liquidity = (((k * 10000 ether) / supply) * 1 ether) / 10000;
 
+        // 透過router 建立初始流動性 totalSupply = 1000000000
         router.addInitialLiquidity(address(token), supply, liquidity);
 
         Data memory _data = Data({
@@ -338,10 +359,13 @@ contract Bonding is
         return true;
     }
 
+    // 只能在內盤買
     function buy(
-        uint256 amountIn,
+        uint256 amountIn, // VIRTUAL IN
         address tokenAddress
     ) public payable returns (bool) {
+        // 如果是initial sale, 會是true
+        // 如果是dex sale，會是false
         require(tokenInfo[tokenAddress].trading, "Token not trading");
 
         address pairAddress = factory.getPair(
@@ -350,9 +374,12 @@ contract Bonding is
         );
 
         IFPair pair = IFPair(pairAddress);
-
+        // A 是 MEME，B 是 VIRTUAL
+        // 取得剩餘數量
         (uint256 reserveA, uint256 reserveB) = pair.getReserves();
 
+        // 計算輸入輸量以及可獲得的輸量
+        // amountIn & amount1In 差異為扣除手續費
         (uint256 amount1In, uint256 amount0Out) = router.buy(
             amountIn,
             tokenAddress,
@@ -388,13 +415,16 @@ contract Bonding is
             tokenInfo[tokenAddress].data.lastUpdated = block.timestamp;
         }
 
+        // gradThreshold = 0.125 B ether
         if (newReserveA <= gradThreshold && tokenInfo[tokenAddress].trading) {
+            // 交易達到特定數字 開新dex
             _openTradingOnUniswap(tokenAddress);
         }
 
         return true;
     }
 
+    // TODO: 把uniswap改成gamedex
     function _openTradingOnUniswap(address tokenAddress) private {
         FERC20 token_ = FERC20(tokenAddress);
 
@@ -418,10 +448,13 @@ contract Bonding is
 
         uint256 assetBalance = pair.assetBalance();
         uint256 tokenBalance = pair.balance();
-
+        // 轉移 assetBalance(virtual) 給 this bonding contract (原本token 在 pair contract)
         router.graduate(tokenAddress);
 
+        // approve agentFactory 轉移 assetBalance
         IERC20(router.assetToken()).forceApprove(agentFactory, assetBalance);
+
+        // 將init sale中所有的VIRTUAL 轉移給 agentFactory
         uint256 id = IAgentFactoryV3(agentFactory).initFromBondingCurve(
             string.concat(_token.data._name, " by Virtuals"),
             _token.data.ticker,
@@ -433,20 +466,24 @@ contract Bonding is
             assetBalance
         );
 
+        // 建立DEX上的token 以及一些流動性邏輯
         address agentToken = IAgentFactoryV3(agentFactory)
             .executeBondingCurveApplication(
                 id,
+                // 1B ether MEME tokens
                 _token.data.supply / (10 ** token_.decimals()),
+                // 剩餘的MEME tokens
                 tokenBalance / (10 ** token_.decimals()),
                 pairAddress
             );
         _token.agentToken = agentToken;
 
+        // FRouter
         router.approval(
-            pairAddress,
-            agentToken,
-            address(this),
-            IERC20(agentToken).balanceOf(pairAddress)
+            pairAddress, // pair
+            agentToken, // asset
+            address(this), // spender
+            IERC20(agentToken).balanceOf(pairAddress) // amount
         );
 
         token_.burnFrom(pairAddress, tokenBalance);
@@ -454,6 +491,7 @@ contract Bonding is
         emit Graduated(tokenAddress, agentToken);
     }
 
+    // 1:1 兌換token
     function unwrapToken(
         address srcTokenAddress,
         address[] memory accounts

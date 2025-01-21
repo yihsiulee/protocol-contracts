@@ -92,8 +92,12 @@ contract FRouter is
 
         IERC20 token = IERC20(token_);
 
+        // 轉移 initial 1B MEME token 給 pair
         token.safeTransferFrom(msg.sender, pairAddress, amountToken_);
 
+        // amounToken_ 1B ether MEME token
+        // amountAsset_ 6000 ether initial asset token (virtual)
+        // mint 不是真的 mint, 是初始化 pair 的 reserve
         pair.mint(amountToken_, amountAsset_);
 
         return (amountToken_, amountAsset_);
@@ -169,6 +173,7 @@ contract FRouter is
         return (amount, amountOut);
     }
 
+    //  轉移 virtual to msg.sender
     function graduate(
         address tokenAddress
     ) public onlyRole(EXECUTOR_ROLE) nonReentrant {

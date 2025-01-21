@@ -53,6 +53,9 @@ contract FPair is IFPair, ReentrancyGuard {
     ) public onlyRouter returns (bool) {
         require(_pool.lastUpdated == 0, "Already minted");
 
+        // revert0 = 1B ether MEME token
+        // revert1 = 6000 ether asset token
+        // k = 6000B
         _pool = Pool({
             reserve0: reserve0,
             reserve1: reserve1,
@@ -101,6 +104,7 @@ contract FPair is IFPair, ReentrancyGuard {
         return true;
     }
 
+    // 轉移virtual asset token 給 recipient
     function transferAsset(
         address recipient,
         uint256 amount

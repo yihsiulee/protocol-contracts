@@ -11,6 +11,7 @@ import "../pool/IUniswapV2Factory.sol";
 import "./IAgentToken.sol";
 import "./IAgentFactory.sol";
 
+// 外盤 meme token contract 需要可以跟內盤1:1互換
 contract AgentToken is
     ContextUpgradeable,
     IAgentToken,
@@ -62,7 +63,6 @@ contract AgentToken is
     /** @dev {_liquidityPools} Enumerable set for liquidity pool addresses */
     EnumerableSet.AddressSet private _liquidityPools;
 
-
     IAgentFactory private _factory; // Single source of truth
 
     /**
@@ -70,6 +70,7 @@ contract AgentToken is
      *
      * Throws if called by any account other than the owner, factory or pool.
      */
+    // 只有owner或factory可以操作
     modifier onlyOwnerOrFactory() {
         if (owner() != _msgSender() && address(_factory) != _msgSender()) {
             revert CallerIsNotAdminNorFactory();
@@ -161,7 +162,7 @@ contract AgentToken is
         if (erc20SupplyParameters_.maxSupply > type(uint128).max) {
             revert MaxSupplyTooHigh();
         }
-
+        // 設定vault address
         vault = erc20SupplyParameters_.vault;
     }
 
@@ -268,7 +269,9 @@ contract AgentToken is
         // This means that we don't need to worry about later incrememtal
         // approvals on tax swaps, as the uniswap router allowance will never
         // be decreased (see code in decreaseAllowance for reference)
+        // 授權new meme token and virtual token
         _approve(address(this), address(_uniswapRouter), type(uint256).max);
+        // pairToken 即 VIRTUAL
         IERC20(pairToken).approve(address(_uniswapRouter), type(uint256).max);
         // Add the liquidity:
         (uint256 amountA, uint256 amountB, uint256 lpTokens) = _uniswapRouter
